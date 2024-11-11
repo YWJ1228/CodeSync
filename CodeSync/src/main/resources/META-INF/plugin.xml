@@ -1,0 +1,49 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>com.ssafy.codesync</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
+    <name>CodeSync</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor email="wj122800@gmail.com" url="https://www.ssafy.com">CodeSync</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <description><![CDATA[
+    This is 'CodeSync Plugin' developed through the SSAFY project.<br>
+    <em>This version is Build Test.</em>
+  ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <fileEditorProvider implementation="com.ssafy.codesync.mdeditor.CodeSyncMarkdownEditorProvider"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="com.ssafy.codesync.state.UserInfo" />
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="CodeSync" anchor="left" factoryClass="com.ssafy.codesync.toolwindow.DirectoryStructureToolWindowFactory" />
+    </extensions>
+
+    <actions>
+        <action
+                id="UploadEditorToRemoteRepositoryHandler"
+                class="com.ssafy.codesync.action.UploadEditorToRemoteRepository"
+                text="Upload Your Remote Directory"
+                description="Upload your file to Remote Repository"
+                >
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+    </actions>
+</idea-plugin>
