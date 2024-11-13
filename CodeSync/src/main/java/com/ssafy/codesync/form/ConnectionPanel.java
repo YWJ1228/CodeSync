@@ -131,16 +131,19 @@ public class ConnectionPanel extends JPanel {
     public JLabel teamNameLabel;
     public JLabel serverIpLabel;
     public JLabel pemKeyPathLabel;
+    public JLabel webSocketPathLabel;
     public JLabel serverLabel;
 
     public JTextField teamName;
     public JTextField serverIP;
     public JTextField pemKeyPath;
+    public JTextField webSocketPath;
     public ComboBox<String> serverTypeComboBox;
 
     public JButton connectButton;
     public JButton cancelButton;
     public JButton browseButton; // 파일 선택 버튼 추가
+    public JButton browseSocketButton;
 
     public ConnectionPanel() {
         this.setLayout(new GridBagLayout());
@@ -196,10 +199,36 @@ public class ConnectionPanel extends JPanel {
             }
         });
 
+        webSocketPathLabel = new JLabel("Web Socket Path:");
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        this.add(webSocketPathLabel, gbc);
+
+        webSocketPath = new JTextField(20);
+        gbc.gridx = 1;
+        this.add(webSocketPath, gbc);
+
+        browseSocketButton = new JButton("Browse");
+        gbc.gridx = 2;
+        this.add(browseSocketButton, gbc);
+
+        browseSocketButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // 파일 선택 대화 상자 열기
+                JFileChooser fileChooser = new JFileChooser();
+                int returnValue = fileChooser.showOpenDialog(ConnectionPanel.this);
+                if (returnValue == JFileChooser.APPROVE_OPTION) {
+                    // 선택한 파일 경로를 JTextField에 설정
+                    webSocketPath.setText(fileChooser.getSelectedFile().getAbsolutePath());
+                }
+            }
+        });
+
         // 서버 타입
         serverLabel = new JLabel("Server:");
         gbc.gridx = 0;
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         this.add(serverLabel, gbc);
 
         String[] serverOptions = {"Linux", "Ubuntu"};
@@ -210,7 +239,7 @@ public class ConnectionPanel extends JPanel {
         // Connect 버튼
         connectButton = new JButton("Connect");
         gbc.gridx = 0;
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         this.add(connectButton, gbc);
 
         // Cancel 버튼
@@ -229,6 +258,10 @@ public class ConnectionPanel extends JPanel {
 
     public JTextField getPemKeyPath() {
         return pemKeyPath;
+    }
+
+    public JTextField getWebSocketPath() {
+        return webSocketPath;
     }
 
     public ComboBox<String> getServerTypeComboBox() {
@@ -253,6 +286,10 @@ public class ConnectionPanel extends JPanel {
 
     public void setPemKeyPath(JTextField pemKeyPath) {
         this.pemKeyPath = pemKeyPath;
+    }
+
+    public void setWebSocketPath(JTextField websocketPath) {
+        this.webSocketPath = websocketPath;
     }
 
     public void setServerTypeComboBox(ComboBox<String> serverTypeComboBox) {
