@@ -1,0 +1,66 @@
+{
+  "name": "codesync",
+  "displayName": "CodeSync",
+  "description": "An extension to sync and view files from an EC2 server",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.94.2"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:codesync.registerServer",
+    "onCommand:codesync.openFileFromServer"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codesync.registerServer",
+        "title": "Register EC2 Server"
+      },
+      {
+        "command": "codesync.openFileFromServer",
+        "title": "Open File from Server"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codesync",
+          "title": "CodeSync",
+          "icon": "resources/extension.png"
+        }
+      ]
+    },
+    "views": {
+      "codesync": [
+        {
+          "id": "codesync.files",
+          "name": "File Directory"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.9",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.94.0",
+    "@types/ws": "^8.5.12",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.13.0"
+  },
+  "dependencies": {
+    "ssh2": "^1.16.0",
+    "ws": "^8.18.0",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.20"
+  }
+}

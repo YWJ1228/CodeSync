@@ -1,42 +1,88 @@
-.gradle
+# Build results
+/out/
 build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
-*.iws
+dist/
+target/
+*.class
+*.jar
+*.war
+*.ear
 *.iml
+
+# IntelliJ IDEA specific
+.idea/
+*.iws
 *.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+# Generated files
+gen/
+generated/
+lib/
 
-### VS Code ###
+# Node.js specific (for VS Code or IntelliJ plugins using Node.js)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Gradle specific (for IntelliJ plugins)
+.gradle/
+build/
+*.lock
+*.properties
+!gradle-wrapper.jar
+
+# Maven specific (for IntelliJ plugins)
+.mvn/
+target/
+*.war
+*.ear
+*.log
+
+# VS Code specific
 .vscode/
 
-### Mac OS ###
+# JetBrains Artifacts
+.idea/
+.idea_modules/
+*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/libraries
+.idea/shelf/
+.idea/vcs.xml
+
+# Java-specific
+*.class
+*.jar
+*.war
+*.ear
+
+# OS-specific
 .DS_Store
+Thumbs.db
+
+# Coverage reports
+coverage/
+*.lcov
+*.info
+
+# IntelliJ Plugin specific
+build/distributions/
+pluginName*.zip
+
+# Test results
+test-results/

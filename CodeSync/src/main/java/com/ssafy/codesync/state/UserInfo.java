@@ -50,4 +50,8 @@ public class UserInfo implements PersistentStateComponent<UserInfo.State> {
     public void removeAll() {
         state.users.clear();
     }
+
+    public boolean removeUser(User user) {
+        return state.users.remove(user);
+    }
 }

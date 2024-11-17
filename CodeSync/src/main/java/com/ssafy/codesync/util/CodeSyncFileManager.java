@@ -2,10 +2,10 @@ package com.ssafy.codesync.util;
 
 import com.google.gson.Gson;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
@@ -19,14 +19,14 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
-import com.jcraft.jsch.ChannelSftp;
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.Session;
-import com.jcraft.jsch.SftpException;
+import com.jcraft.jsch.*;
 import com.ssafy.codesync.state.User;
 import com.ssafy.codesync.state.UserInfo;
+import com.ssafy.codesync.websocket.IntelliJChangeBatcher;
 import com.ssafy.codesync.websocket.MyWebSocketServer;
 
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -39,7 +39,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import javax.swing.JOptionPane;
+import javax.swing.*;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -49,209 +49,80 @@ public class CodeSyncFileManager {
 
     private final String rootDirectory = "vscode-test";
     private final Project project;
-    private final Session session;
     private final MyWebSocketServer server;
-    private File localFile;
     private final FileEditorManager fileEditorManager;
-    private Process process;
     private UserInfo userInfo = ServiceManager.getService(UserInfo.class);
+    private static final Map<VirtualFile, IntelliJChangeBatcher> batchers = new HashMap<>();
+//    private boolean isUserInput = false; // 플래그 추가
+    private final Map<VirtualFile, DocumentListener> documentListeners = new HashMap<>();
+    private final Map<VirtualFile, Boolean> userInputFlags = new HashMap<>();
+//    private DocumentListener documentListener;
 
-    public CodeSyncFileManager(Project project, Session session, MyWebSocketServer server) {
+    // ** plugin 설치 시
+    private String pluginPath;
+    public CodeSyncFileManager(Project project, MyWebSocketServer server, String pluginPath) {
         this.project = project;
-        this.session = session;
         this.server = server;
         this.fileEditorManager = FileEditorManager.getInstance(project);
+        this.pluginPath = pluginPath + "\\y_websocket.js";
+
+        // Add FileEditorManagerListener
+        fileEditorManager.addFileEditorManagerListener(new FileEditorManagerListener() {
+            @Override
+            public void fileOpened(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                //TODO 작성
+                attachKeyListenerToEditor(file);
+                setupDocumentListener(file);
+            }
+
+            @Override
+            public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                //TODO 작성
+                cleanupOnFileClose(file);
+            }
+        });
     }
 
+    // plugin 설치 시
+//    public CodeSyncFileManager(Project project, Session session, MyWebSocketServer server) {
+//        this.project = project;
+//        this.session = session;
+//        this.server = server;
+//        this.fileEditorManager = FileEditorManager.getInstance(project);
+//    }
+
     // 리스너를 통해 선택된 파일을 downloadFile 메서드를 통해 로컬에 저장 후, 에디터 형식으로 열기
-    public void downloadFileAndOpenInEditor(String fileName, String name, String username, String serverIp) {
+    public void downloadFileAndOpenInEditor(String fileName, String username, String serverIp) {
         try {
             String remoteFilePath = "/home/" + username + "/" + rootDirectory + "/" + fileName;
             System.out.println("1 - 서버의 파일을 로컬에 다운로드 Start");
-            localFile = downloadFile(remoteFilePath, serverIp);
+            File localFile = downloadFile(remoteFilePath, serverIp);
             System.out.println("2 - 서버의 파일을 로컬에 다운로드 End");
-
-            if (localFile != null) {
-                System.out.println("3 - 로컬 파일을 버츄얼 파일로 가져오기 Start");
-                VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(localFile);
-                System.out.println("4 - 로컬 파일을 버츄얼 파일로 가져오기 End");
-                if (virtualFile != null) {
-                    virtualFile.refresh(true, false);  // 강제 새로 고침
-                    System.out.println("5 - 에디터 열기 Start");
-                    ApplicationManager.getApplication().invokeLater(() -> {
-                        openEditorForFileType(virtualFile); // 서버 파일만 에디터에서 엶
-                    });
-                    System.out.println("5 - 에디터 열기 End");
-                    // 에디터가 닫힐 때 로컬 파일 삭제
-                    MessageBusConnection connection = project.getMessageBus().connect();
-                    File finalLocalFile = localFile;
-                    connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
-                        @Override
-                        public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
-                            if (file.equals(virtualFile)) {
-                                // 에디터가 닫히면 로컬 파일 삭제
-                                if (finalLocalFile.exists()) {
-                                    finalLocalFile.delete();
-                                }
-                                process.destroy();
-                                connection.disconnect(); // 리스너 연결 해제
-                            }
-                        }
-                    });
-                } else {
-                    JOptionPane.showMessageDialog(null, "Virtual File Error");
-                    System.out.println("5-2 Virtual File Error");
-                    return;
-                }
-                //                });
-            } else {
-                JOptionPane.showMessageDialog(null, "Download Error");
-                System.out.println("3-2 Download Error");
-                return;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(null, "Cannot open the file.");
-            return;
-        }
-
-        session.disconnect();
-        System.out.println("6-start websocket");
-
-        // ** Document 생성
-        Document document = EditorFactory.getInstance().createDocument("");
-
-        try {
-            // ** 문자열로 변환하여 Document에 삽입
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            // 문자열로 변환하여 Document에 삽입
-            String content = byteArrayOutputStream.toString(StandardCharsets.UTF_8);
-            WriteCommandAction.runWriteCommandAction(project, () -> {
-                document.setText(content);
-            });
-
-            ApplicationManager.getApplication().invokeLater(() -> {
+            System.out.println("3 - 로컬 파일을 버츄얼 파일로 가져오기 Start");
             VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(localFile);
-            Document doc = FileDocumentManager.getInstance().getDocument(virtualFile);
-            System.out.println("야 doc.getText() 출력할거다 -> " + doc.getText());
-            System.out.println("야 이번엔 virtualFile 출력할거야 -> " + virtualFile);
-            server.init(doc, fileEditorManager, localFile);
-                doc.addDocumentListener(new DocumentListener() {
-                    @Override
-                    public void documentChanged(@NotNull DocumentEvent event) {
-                        handleDocumentChange(event, server, fileName);
-                    }
+            System.out.println("4 - 로컬 파일을 버츄얼 파일로 가져오기 End");
+
+
+            if (virtualFile != null) {
+                virtualFile.refresh(true, false);  // 강제 새로 고침
+                System.out.println("5 - 에디터 열기 Start");
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    openEditorForFileType(virtualFile); // 서버 파일만 에디터에서 엶
                 });
-            });
+                System.out.println("5 - 에디터 열기 End");
 
-            // ** 변경할 것 **
-            // String scriptPath = "C:\\Users\\SSAFY\\Desktop\\intellij\\S11P31A101\\vscode-extension\\codesync\\y_websocket.js";
-
-            // --------------------------------------------------------------------------
-            // 팀 서버 등록 시 입력 받은 웹소켓 경로를 가져옴
-            User user = userInfo.getUserByServerIP(serverIp);
-            String scriptPath = user.getWebSocketPath();
-            System.out.println("websocket path: " + scriptPath);
-
-            // node_modules 파일이 있는 상위 경로 이동
-            String parentPath = "";
-            if (scriptPath != null) {
-                int lastDescriptorIndex = scriptPath.lastIndexOf("\\");
-                if (lastDescriptorIndex != -1) {
-                    parentPath = scriptPath.substring(0, lastDescriptorIndex);
-                    System.out.println("websocket's parent path: " + parentPath);
-
-                    File nodeModules = new File(parentPath, "node_modules");
-                    if (!nodeModules.exists()) {  // node_modules가 없을 때만 실행
-                        try {
-                            Process npmProcess = new ProcessBuilder("cmd.exe", "/c", "npm install")
-                                    .directory(new File(parentPath))
-                                    .start();
-
-                            int exitCode = npmProcess.waitFor();
-                            if (exitCode != 0) {
-                                System.out.println("npm install 실패, 종료 코드: " + exitCode);
-                            } else {
-                                System.out.println("npm install 성공.");
-                            }
-                        } catch (IOException | InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                    } else {
-                        System.out.println("node_modules already exists, skipping npm install.");
-                    }
-                }
+                startProcessWithJson(localFile, serverIp, fileName); // Process 실행
+            } else  {
+                System.out.println("4 - 버츄얼 파일 가져오기 실패");
+                throw new RuntimeException("Failed to create VirtualFile for: " + localFile.getPath());
             }
-            // --------------------------------------------------------------------------
-
-            String fileContent = new String(Files.readAllBytes(localFile.toPath())).trim();
-
-            // ** ProcessBuilder 시작
-            Map<String, String> jsonMap = new HashMap<>();
-            jsonMap.put("fileContent", fileContent);
-            jsonMap.put("host", serverIp); // 변경할 것(ip주소로)
-            jsonMap.put("fileName", fileName);  // 변경할 것
-
-            String jsonArgs = new Gson().toJson(jsonMap);
-
-            // JSON 파일 생성 및 내용 쓰기
-            Path jsonTempFile = Files.createTempFile("zargs", ".json");
-            Files.write(jsonTempFile, jsonArgs.getBytes(StandardCharsets.UTF_8));
-            jsonTempFile.toFile().deleteOnExit();
-
-            Thread processThread = new Thread(() -> {
-                try {
-                    // ProcessBuilder에 JSON 파일 경로 전달
-                    ProcessBuilder processBuilder = new ProcessBuilder(
-                            // "C:\\Program Files\\GraalVM\\graaljs-jvm-24.1.1-windows-amd64\\graaljs-24.1.1-windows-amd64\\bin\\js.exe",
-                            "node",
-                            // "js",
-                            scriptPath, jsonTempFile.toString());
-                    // 작업 디렉토리 설정 (필요한 경우)
-                    // processBuilder.directory(new File("작업_디렉토리_경로"));
-
-                    // 프로세스 실행
-                    process = processBuilder.start();
-                    System.out.println("[ intellij ] process 실행");
-
-                    // 출력 읽기 스레드 생성
-                    StringBuilder outputBuilder = new StringBuilder();
-
-                    Thread outputThread = new Thread(() -> {
-                        try (BufferedReader reader = new BufferedReader(
-                                new InputStreamReader(process.getInputStream()))) {
-                            String line;
-                            while ((line = reader.readLine()) != null) {
-                                outputBuilder.append(line).append("\n");
-                                System.out.println(line);
-                            }
-                            System.out.println("[ intellij ] 출력 : " + outputBuilder);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    });
-
-                    outputThread.start(); // 스레드 시작
-
-                    // 프로세스 종료 코드 확인
-                    int exitCode = process.waitFor();
-                    // listener.close();
-                    System.out.println("[ intellij ] Exit Code: " + exitCode);
-                } catch (IOException | InterruptedException e) {
-                    e.printStackTrace(); // 예외 처리
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-
-            processThread.start();
-            processThread.join();
-            // 끝
-
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             e.printStackTrace();
         }
+
     }
+
 
     private void openEditorForFileType(VirtualFile virtualFile) {
         if ("md".equalsIgnoreCase(virtualFile.getExtension())) {
@@ -261,32 +132,161 @@ public class CodeSyncFileManager {
             for (FileEditorProvider provider : providers) {
                 if (provider.getEditorTypeId().equals("CodeSyncMarkdownEditor")) {
                     fileEditorManager.openEditor(new OpenFileDescriptor(project, virtualFile), true);
-                    return;
+                    break;
                 }
             }
         } else {
             fileEditorManager.openFile(virtualFile, true);
         }
+
+        // 일정 시간마다 자동으로 서버에 업로드
+        SwingUtilities.invokeLater(() -> {
+            startFileUploadThread(virtualFile);
+        });
     }
 
+    private void attachKeyListenerToEditor(VirtualFile file) {
+        Editor editor = fileEditorManager.getSelectedTextEditor();
+        if (editor != null) {
+            editor.getContentComponent().addKeyListener(new KeyAdapter() {
+                @Override
+                public void keyPressed(KeyEvent e) {
+                    System.out.println("[ intellij (key) ] keyPressed!");
+                    userInputFlags.put(file, true); // 파일별로 상태 저장
+                    e.consume();
+//                    int caretPosition = editor.getCaretModel().getOffset();  // 현재 커서 위치
+//                    editor.getCaretModel().moveToOffset(caretPosition);
+                }
+            });
+        } else {
+            System.out.println("[ intellij (key) ] editor 생성 안됨 -> keyListener 생성 안됨 -> 입력 감지 못함.");
+        }
+    }
+
+    private void setupDocumentListener(VirtualFile file) {
+        Document document = FileDocumentManager.getInstance().getDocument(file);
+        if (document != null) {
+            userInputFlags.put(file, false); // 파일에 대한 userInputFlag 초기화
+
+            DocumentListener listener = new DocumentListener() {
+                @Override
+                public void documentChanged(@NotNull DocumentEvent event) /* {
+                    Boolean isUserInput = userInputFlags.getOrDefault(file, false);
+                    IntelliJChangeBatcher batcher = batchers.get(file);
+
+                    if (isUserInput) {
+                        System.out.println("[ intellij ] 사용자 입력으로 문서가 변경되었습니다.");
+                        if (batcher != null) {
+                            batcher.onDocumentChange(event);
+                        }
+                        userInputFlags.put(file, false);
+                    } else {
+                        System.out.println("[ intellij ] 시스템에 의해 문서가 변경되었습니다.");
+                    }
+                } */
+                {
+                    Boolean isUserInput = userInputFlags.getOrDefault(file, false);
+                    IntelliJChangeBatcher batcher = batchers.get(file);
+                    if (batcher == null) {
+                        batcher = new IntelliJChangeBatcher(server);
+                        batchers.put(file, batcher);
+                    } else {
+                        // Ensure batcher restarts if needed
+                        if (!batcher.isBatchingActive) {
+                            batcher.startBatching();
+                        }
+                        System.out.println("[ intellij ] Reusing existing batcher." + batchers);
+                    }
+
+                    if (isUserInput || (!server.socketFlag && (event.getOldLength() > event.getNewLength() || event.getNewFragment().toString().equals("\n")))) {
+                        System.out.println("[ intellij (key) ] 키보드 입력에 의한 문서 변경. newText: " + event.getNewFragment().toString());
+                        System.out.println("\\" + event.getNewFragment().toString());
+                        if (batcher != null) {
+                            batcher.onDocumentChange(event);
+                        }
+                        userInputFlags.put(file, false);
+                    } else {
+                        System.out.println("[ intellij (key) ] 시스템 또는 다른 방법에 의한 문서 변경.: " + event.getNewFragment().toString().equals("\n"));
+                    }
+                }
+            };
+            File localFile = new File(file.getPath());
+            server.init(document, fileEditorManager, localFile);
+            document.addDocumentListener(listener);
+            documentListeners.put(file, listener);
+
+            // 해당 파일에 대한 batcher 설정
+            setupBatcher(file);
+        }
+    }
+
+    private void setupBatcher(VirtualFile file) {
+        if (!batchers.containsKey(file)) {
+            IntelliJChangeBatcher batcher = new IntelliJChangeBatcher(server);
+            batchers.put(file, batcher);
+        }
+    }
+
+    private void cleanupOnFileClose(VirtualFile file) {
+        // Batcher 정리
+        IntelliJChangeBatcher batcher = batchers.remove(file);
+        if (batcher != null) {
+            batcher.dispose();
+            System.out.println("Batcher disposed for file: " + file.getPath());
+        }
+
+        // DocumentListener 정리
+        Document document = FileDocumentManager.getInstance().getDocument(file);
+        if (document != null) {
+            DocumentListener listener = documentListeners.remove(file);
+            if (listener != null) {
+                document.removeDocumentListener(listener);
+                System.out.println("DocumentListener removed for file: " + file.getPath());
+            }
+        }
+
+        // 로컬 파일 업로드 및 삭제
+        File localFile = new File(file.getPath());
+        String remoteFilePath = "/home/" + file.getParent().getName() + "/" + file.getName();
+        try {
+            boolean uploadSuccess = uploadFile(remoteFilePath, file.getParent().getName(), localFile);
+            if (uploadSuccess && localFile.exists() && localFile.delete()) { // && localFile.delete()
+                System.out.println("Local file deleted: " + localFile.getPath());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // UserInputFlag 정리
+        userInputFlags.remove(file);
+        System.out.println("UserInputFlag removed for file: " + file.getPath());
+    }
+
+
     // SFTP를 통해 서버에 파일 내용을 가져와 로컬에 저장
-    public File downloadFile(String remoteFilePath, String serverIp)
-            throws JSchException, SftpException {
+    public File downloadFile(String remoteFilePath, String serverIp) throws JSchException, SftpException {
+        User user = userInfo.getUserByServerIP(serverIp);
+
+        JSch jsch = new JSch();
+        jsch.addIdentity(user.getPemKeyPath());
+        Session session = jsch.getSession(user.getServerOption(), user.getServerIP(), 22);
+        session.setConfig("StrictHostKeyChecking", "no");
+        session.connect();
+
         ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
         channelSftp.connect();
 
         String tmpDir = System.getProperty("java.io.tmpdir") + "\\" + rootDirectory + "\\" + serverIp;
-        File tmplocalFile = new File(tmpDir);
-        if (!tmplocalFile.exists()) {
-            tmplocalFile.mkdirs();
-        }
-        tmplocalFile.deleteOnExit();
+        File localDir = new File(tmpDir);
+        if (!localDir.exists()) localDir.mkdirs();
+        localDir.deleteOnExit();
 
         File localFile = new File(tmpDir, new File(remoteFilePath).getName());
-        localFile.deleteOnExit(); // JVM 종료 시 삭제 예약
+//         localFile.deleteOnExit(); // JVM 종료 시 삭제 예약
 
         // 서버 파일 다운로드
         // channelSftp.get(remoteFilePath, localFile.getAbsolutePath());
+        System.out.println("remoteFilePath: " +remoteFilePath);
         InputStream inputStream = channelSftp.get(remoteFilePath);
         try (FileOutputStream outputStream = new FileOutputStream(localFile)) {
             byte[] buffer = new byte[1024];
@@ -295,29 +295,145 @@ public class CodeSyncFileManager {
                 outputStream.write(buffer, 0, readCount);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException("Error downloading file: " + e.getMessage(), e);
+        } finally {
+            channelSftp.disconnect();
+            session.disconnect();
         }
 
-        channelSftp.disconnect();
         System.out.println("DOWNLOAD SUCCESS!!!");
         return localFile;
     }
 
-    public long getFileSize(String remoteFilePath) throws JSchException, SftpException {
-        ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
-        channelSftp.connect();
-        long fileSize = channelSftp.lstat(remoteFilePath).getSize();
-        channelSftp.disconnect();
-        return fileSize;
+//    public long getFileSize(String remoteFilePath) throws JSchException, SftpException {
+//        ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
+//        channelSftp.connect();
+//        long fileSize = channelSftp.lstat(remoteFilePath).getSize();
+//        channelSftp.disconnect();
+//        return fileSize;
+//    }
+
+//    private void handleDocumentChange(@NotNull DocumentEvent event, MyWebSocketServer server, String fileName) {
+//        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+//            ReadAction.run(() -> {
+//                String content = event.getDocument().getText();
+//                // String content = fileName + "@@@" + event.getDocument().getText();
+//                server.broadcast(content);
+//            });
+//        });
+//    }
+
+    private void startProcessWithJson(File localFile, String serverIp, String fileName) {
+        try {
+            // 파일 내용 읽기
+            String fileContent = new String(Files.readAllBytes(localFile.toPath())).trim();
+
+            // JSON 데이터 준비
+            Map<String, String> jsonMap = new HashMap<>();
+            jsonMap.put("fileContent", fileContent);
+            jsonMap.put("host", serverIp);
+            jsonMap.put("fileName", fileName);
+
+            // JSON 파일 생성
+            String jsonArgs = new Gson().toJson(jsonMap);
+            Path jsonTempFile = Files.createTempFile("zargs", ".json");
+            Files.write(jsonTempFile, jsonArgs.getBytes(StandardCharsets.UTF_8));
+            jsonTempFile.toFile().deleteOnExit(); // JVM 종료 시 임시 파일 삭제 예약
+
+            // ProcessBuilder 준비
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    "node", // Node.js 실행 명령어
+                    pluginPath, // 실행할 스크립트 경로
+                    jsonTempFile.toString() // JSON 파일 경로
+            );
+
+            // 작업 디렉토리 설정 (필요시)
+            processBuilder.directory(new File(pluginPath).getParentFile());
+
+            // 프로세스 실행
+            Process process = processBuilder.start();
+            System.out.println("[ intellij ] Process 실행");
+
+            // 프로세스 출력 읽기
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("[ Process Output ] " + line);
+                }
+            }
+
+            // 종료 코드 확인
+            int exitCode = process.waitFor();
+            System.out.println("[ intellij ] Process 종료 코드: " + exitCode);
+
+            if (exitCode != 0) {
+                System.err.println("[ intellij ] Process 실행 중 오류 발생");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("[ intellij ] Process 실행 실패");
+        }
     }
 
-    private void handleDocumentChange(@NotNull DocumentEvent event, MyWebSocketServer server, String fileName) {
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            ReadAction.run(() -> {
-                String content = event.getDocument().getText();
-                // String content = fileName + "@@@" + event.getDocument().getText();
-                server.broadcast(content);
-            });
-        });
+
+    private void startFileUploadThread(VirtualFile virtualFile) {
+        new Thread(() -> {
+            while (fileEditorManager.isFileOpen(virtualFile)) {
+                String filePath = virtualFile.getPath();
+                String serverIp = virtualFile.getParent().getName();
+                File localFile = new File(filePath);
+
+                try {
+                    System.out.println(localFile.getName() + " 파일 업로드 타이머 설정!");
+                    Thread.sleep(60000); // 1분 60000
+                    User user = userInfo.getUserByServerIP(serverIp);
+                    JSch jsch = new JSch();
+                    jsch.addIdentity(user.getPemKeyPath());
+                    Session session = jsch.getSession(user.getServerOption(), user.getServerIP(), 22);
+                    session.setConfig("StrictHostKeyChecking", "no");
+                    session.connect();
+
+                    ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
+                    channelSftp.connect();
+
+                    String remoteFilePath = "/home/" + user.getServerOption() + "/" + rootDirectory + "/" + localFile.getName();
+                    channelSftp.put(localFile.getAbsolutePath(), remoteFilePath);
+
+                    channelSftp.disconnect();
+                    session.disconnect();
+
+                    System.out.println(localFile.getName() + " 파일 업로드 타이머 완료!");
+                } catch (Exception e1) {
+                    e1.printStackTrace();
+                }
+            }
+        }).start();
     }
+
+    public boolean uploadFile(String remoteFilePath, String serverIp, File localFile) throws JSchException, SftpException {
+        try {
+            User user = userInfo.getUserByServerIP(serverIp);
+            JSch jsch = new JSch();
+            jsch.addIdentity(user.getPemKeyPath());
+            Session session = jsch.getSession(user.getServerOption(), user.getServerIP(), 22);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+
+            ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
+            channelSftp.connect();
+
+            channelSftp.put(localFile.getAbsolutePath(), remoteFilePath);
+
+            channelSftp.disconnect();
+            session.disconnect();
+
+            System.out.println(localFile.getName() + " 파일 업로드 완료!");
+            return true;
+        } catch (Exception e1) {
+            e1.printStackTrace();
+            return false;
+        }
+    }
+
 }
+

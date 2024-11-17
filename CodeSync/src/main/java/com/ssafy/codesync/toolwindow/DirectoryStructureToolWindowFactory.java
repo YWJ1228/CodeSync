@@ -1,6 +1,7 @@
 package com.ssafy.codesync.toolwindow;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
@@ -15,6 +16,7 @@ import com.ssafy.codesync.form.ConnectionPanel;
 import com.ssafy.codesync.state.User;
 import com.ssafy.codesync.state.UserInfo;
 import com.ssafy.codesync.util.CodeSyncFileManager;
+//import com.ssafy.codesync.util.CodeSyncFileManagerOrg;
 import com.ssafy.codesync.websocket.MyWebSocketServer;
 
 import org.jetbrains.annotations.NotNull;
@@ -29,7 +31,10 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.*;
+import java.nio.file.Paths;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
     // mainPanel: CodeSync 좌측 툴바의 메인 패널
@@ -49,7 +54,6 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
         public String teamName;
         public String serverIP;
         public String pemKeyPath;
-        public String webSocketPath;
         public String serverOption;
 
         public PanelInfo() {}
@@ -57,7 +61,6 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
             this.teamName = connectionPanel.getTeamName().getText();
             this.serverIP = connectionPanel.getServerIP().getText().trim();
             this.pemKeyPath = connectionPanel.getPemKeyPath().getText().trim();
-            this.webSocketPath = connectionPanel.getWebSocketPath().getText().trim();
             this.serverOption = connectionPanel.getServerTypeComboBox().getItem().equals("Linux") ? "ec2-user" : "ubuntu";
         }
 
@@ -66,77 +69,110 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
             this.serverIP = user.getServerIP();
             this.pemKeyPath = user.getPemKeyPath();
             this.serverOption = user.getServerOption();
-            this.webSocketPath = user.getWebSocketPath();
         }
     }
 
     // 플러그인이 최초 실행이 좌측에 툴 윈도우를 생성하는 메서드
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
-        mainPanel = new JPanel(new BorderLayout());
-        tabbedPane = new JBTabbedPane();
-
         // PersistentStateComponent 테스트 삭제용 메서드 - 플러그인 실행마다 기존에 저장했던 팀 등록 정보 초기화
         // userInfo.removeAll();
 
-        // 기존에 등록했던 팀 정보가 있는지 검사(if-else)
-        if (userInfo.getUsers().isEmpty()) {
-            System.out.println("Not Exist UserInfo!!!");
-            ConnectionPanel connectionPanel = new ConnectionPanel();
-            connectionPanel.getConnectButton().addActionListener(e -> {
-                // 불러올 팀 정보 클래스에 담기
-                PanelInfo panelInfo = new PanelInfo(connectionPanel);
-                // 등록 팀 디렉토리 구조 및 버튼과 팝업 메뉴 리스너 생성
-                onShowing(project, toolWindow, panelInfo);
+        mainPanel = new JPanel(new BorderLayout());
 
-                // PersistentStateComponent 저장
-                userInfo.addUser(new User(connectionPanel));
+        JPanel InitPanel = new JPanel(new GridBagLayout());
+        JButton InitButton = new JButton("Check Settings");
+        InitButton.addActionListener(e -> {
+            mainPanel.remove(InitButton);
+            mainPanel.remove(InitPanel);
+            JLabel loadingLabel = new JLabel("Now loading...", SwingConstants.CENTER);
+            mainPanel.add(loadingLabel, BorderLayout.CENTER);
 
-                // 팀 등록 정보 작성한 탭 삭제
-                tabbedPane.remove(tabbedPane.indexOfTab("New"));
-            });
-            // 팀 등록 정보 작성할 탭 생성
-            tabPanel = connectionPanel;
-            tabbedPane.addTab("New", tabPanel);
-            mainPanel.add(tabbedPane);
-        } else {
-            System.out.println("Exist UserInfo!!!");
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                initializePluginResources();
 
-            for (int i = 0; i < userInfo.getUsers().size(); i++) {
-                System.out.println("Load Team's IP: " + userInfo.getUsers().get(i).getServerIP());
+                tabbedPane = new JBTabbedPane();
+                ConnectionPanel connectionPanel = new ConnectionPanel();
 
-                // 팀 정보 불러오기
-                User user = userInfo.getUsers().get(i);
-                PanelInfo panelInfo = new PanelInfo(user);
+                // 기존에 등록했던 팀 정보가 있는지 검사(if-else)
+                if (userInfo.getUsers().isEmpty()) {
+                    System.out.println("Not Exist UserInfo!!!");
+                    connectionPanel.getConnectButton().addActionListener(e1 -> {
+                        // 불러올 팀 정보 클래스에 담기
+                        PanelInfo panelInfo = new PanelInfo(connectionPanel);
 
-                // 각 팀별 디렉토리 구조 및 버튼과 팝업 메뉴 리스너가 등록된 탭 생성
-                onShowing(project, toolWindow, panelInfo);
-            }
-            /* 리로드 버튼 삭제 - 바로 팀 탭 불러오기
-            JButton reloadButton = new JButton("Reload");
-            reloadButton.addActionListener(e -> {
-                mainPanel.remove(reloadButton);
-                for (int i = 0; i < userInfo.getUsers().size(); i++) {
-                    System.out.println("Load Team's IP: " + userInfo.getUsers().get(i).getServerIP());
+                        // 등록 팀 디렉토리 구조 및 버튼과 팝업 메뉴 리스너 생성
+                        if (onShowing(project, toolWindow, panelInfo)) {
+                            // PersistentStateComponent 저장
+                            userInfo.addUser(new User(connectionPanel));
 
-                    // 팀 정보 불러오기
-                    User user = userInfo.getUsers().get(i);
-                    PanelInfo panelInfo = new PanelInfo(user);
+                            // 팀 등록 정보 작성한 탭 삭제
+                            tabbedPane.remove(tabbedPane.indexOfTab("New"));
+                        }
+                    });
+                    // 팀 등록 정보 작성할 탭 생성
+                    tabPanel = connectionPanel;
+                    tabbedPane.addTab("New", tabPanel);
+                    mainPanel.add(tabbedPane);
+                } else {
+                    System.out.println("Exist UserInfo!!!");
 
-                    // 각 팀별 디렉토리 구조 및 버튼과 팝업 메뉴 리스너가 등록된 탭 생성
-                    onShowing(project, toolWindow, panelInfo);
+                    for (int i = 0; i < userInfo.getUsers().size(); i++) {
+                        System.out.println("Load Team's IP: " + userInfo.getUsers().get(i).getServerIP());
+
+                        // 팀 정보 불러오기
+                        User user = userInfo.getUsers().get(i);
+                        PanelInfo panelInfo = new PanelInfo(user);
+
+                        // 각 팀별 디렉토리 구조 및 버튼과 팝업 메뉴 리스너가 등록된 탭 생성
+                        if (!onShowing(project, toolWindow, panelInfo)) {
+                            // 저장되어 있는 정보 중, 잘못된 정보는 삭제
+                            userInfo.removeUser(user);
+                        }
+                    }
+                    if (tabbedPane.getTabCount() == 0) {
+                        connectionPanel.getConnectButton().addActionListener(e2 -> {
+                            // 불러올 팀 정보 클래스에 담기
+                            PanelInfo panelInfo = new PanelInfo(connectionPanel);
+
+                            // 등록 팀 디렉토리 구조 및 버튼과 팝업 메뉴 리스너 생성
+                            if (onShowing(project, toolWindow, panelInfo)) {
+                                // PersistentStateComponent 저장
+                                userInfo.addUser(new User(connectionPanel));
+
+                                // 팀 등록 정보 작성한 탭 삭제
+                                tabbedPane.remove(tabbedPane.indexOfTab("New"));
+                            }
+                        });
+                        // 팀 등록 정보 작성할 탭 생성
+                        tabPanel = connectionPanel;
+                        tabbedPane.addTab("New", tabPanel);
+                        mainPanel.add(tabbedPane);
+                    }
                 }
-                JOptionPane.showMessageDialog(null, "Connection Success!");
-            });
-            mainPanel.add(reloadButton);
-            */
-        }
 
-        toolWindow.getComponent().add(mainPanel);
+                mainPanel.remove(loadingLabel);
+                toolWindow.getComponent().add(mainPanel);
+                JOptionPane.showMessageDialog(null, "Check Success!");
+            });
+        });
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0; // x 위치
+        gbc.gridy = 0; // y 위치
+        gbc.weightx = 1; // 가중치 설정
+        gbc.weighty = 1; // 가중치 설정
+        gbc.anchor = GridBagConstraints.CENTER; // 중앙 정렬
+        gbc.fill = GridBagConstraints.NONE;
+        InitPanel.setPreferredSize(new Dimension(150, 50));
+        InitPanel.add(InitButton, gbc); // 버튼을 buttonPanel에 추가
+        mainPanel.add(InitPanel, BorderLayout.CENTER); // buttonPanel을 mainPanel의 CENTER에 추가
+
+        toolWindow.getComponent().add(mainPanel, BorderLayout.CENTER); // mainPanel을 toolWindow의 CENTER에 추가
     }
 
     // 팀 탭 생성 - 서버 연결, 디렉토리 구조 불러오기, 리스너 등록(버튼, 마우스 클릭 이벤트, 우클릭 팝업 메뉴 등)
-    public void onShowing(Project project, ToolWindow toolWindow, PanelInfo panelInfo) {
+    public boolean onShowing(Project project, ToolWindow toolWindow, PanelInfo panelInfo) {
         String teamName = panelInfo.teamName;
         String serverIP = panelInfo.serverIP.trim();
         String pemKeyPath = panelInfo.pemKeyPath.trim();
@@ -145,7 +181,7 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
         // 서버 탭 이름 중복 검사
         if (tabbedPane.indexOfTab(teamName) != -1) {
             JOptionPane.showMessageDialog(null, "A duplicate name exists!");
-            return;
+            return false;
         }
 
         try {
@@ -159,6 +195,12 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
             session.setConfig("StrictHostKeyChecking", "no");
 
             session.connect();
+
+            // CodeSync 디렉토리 존재 여부 확인 후, 없으면 생성
+            if(!checkRootDirectory(session)) {
+                JOptionPane.showMessageDialog(null, "Root Directory Create Error!");
+                return false;
+            }
 
             // 세션을 통해 연결된 서버에서 파일 디렉토리 구조 생성
             JTree tree = makeDirectoryStructure(project, session, serverOption, serverIP, teamName);
@@ -197,8 +239,13 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
             mainPanel.revalidate();
             mainPanel.repaint();
 
-        } catch (Exception jschError) {
-            jschError.printStackTrace();
+            return true;
+
+        }
+        catch (Exception exception) {
+            JOptionPane.showMessageDialog(null, "Server Connection Error!");
+            exception.printStackTrace();
+            return false;
         }
     }
 
@@ -414,8 +461,19 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
                             // SFTP 방식으로 클릭한 서버 내 파일을 로컬에 저장 후 에디터로 열기
                             MyWebSocketServer server = new MyWebSocketServer(1234, project);
                             server.startServer();
-                            CodeSyncFileManager fileManager = new CodeSyncFileManager(project, openSession, server);
-                            fileManager.downloadFileAndOpenInEditor(newFileName, user.getName(), user.getServerOption(), user.getServerIP());
+
+                            // ** plugin 설치 시 해당 부분 사용
+                            String scriptPath = System.getProperty("java.io.tmpdir") + "CodeSync";
+                            System.out.println("init : "+scriptPath);
+                            CodeSyncFileManager fileManager = new CodeSyncFileManager(project, server, scriptPath);
+                            // CodeSyncFileManager fileManager = new CodeSyncFileManager(project, openSession, server);
+                            fileManager.downloadFileAndOpenInEditor(newFileName,user.getServerOption(),user.getServerIP());
+
+//                            CodeSyncFileManagerOrg fileManager = new CodeSyncFileManagerOrg(project, openSession, server, scriptPath);
+//                            // CodeSyncFileManager fileManager = new CodeSyncFileManager(project, session, server);
+//                            // SFTP 방식으로 클릭한 서버 내 파일을 로컬에 저장 후 에디터로 열기
+//                            fileManager.downloadFileAndOpenInEditor(newFileName, user.getName(), user.getServerOption(), user.getServerIP());
+
                         });
 
                     } catch (JSchException ex) {
@@ -580,9 +638,20 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
                                 ApplicationManager.getApplication().executeOnPooledThread(() -> {
                                     MyWebSocketServer server = new MyWebSocketServer(1234, project);
                                     server.startServer();
-                                    CodeSyncFileManager fileManager = new CodeSyncFileManager(project, session, server);
+
+                                    // ** plugin 설치 시 해당 부분 사용
+                                    String scriptPath = System.getProperty("java.io.tmpdir") + "CodeSync";
+                                    System.out.println("init : "+scriptPath);
+
+                                    CodeSyncFileManager fileManager = new CodeSyncFileManager(project, server, scriptPath);
+                                    // CodeSyncFileManager fileManager = new CodeSyncFileManager(project, session, server);
                                     // SFTP 방식으로 클릭한 서버 내 파일을 로컬에 저장 후 에디터로 열기
-                                    fileManager.downloadFileAndOpenInEditor(fileName, user.getName(), user.getServerOption(), user.getServerIP());
+                                    fileManager.downloadFileAndOpenInEditor(fileName, user.getServerOption(), user.getServerIP());
+
+//                                    CodeSyncFileManagerOrg fileManager = new CodeSyncFileManagerOrg(project, session, server, scriptPath);
+//                                    // CodeSyncFileManager fileManager = new CodeSyncFileManager(project, session, server);
+//                                    // SFTP 방식으로 클릭한 서버 내 파일을 로컬에 저장 후 에디터로 열기
+//                                    fileManager.downloadFileAndOpenInEditor(fileName, user.getName(), user.getServerOption(), user.getServerIP());
                                 });
 
                             } catch (JSchException ex) {
@@ -600,7 +669,7 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
         JButton addButton = new JButton("Add Connection");
 
         addButton.addActionListener(e -> {
-            if (tabbedPane.getTabCount() == 3) {
+            if (tabbedPane.getTabCount() == 4) {
                 JOptionPane.showMessageDialog(null, "Only a maximum of 3 connections can be registered!");
                 return;
             }
@@ -610,13 +679,13 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
                 // 새롭게 생성한 팀 정보 입력 탭에 연결 버튼 리스너 등록
                 newConnectionPanel.getConnectButton().addActionListener(ne -> {
                     PanelInfo newPanelInfo = new PanelInfo(newConnectionPanel);
-                    onShowing(project, toolWindow, newPanelInfo);
+                    if(onShowing(project, toolWindow, newPanelInfo)) {
+                        // PersistentStateComponent 저장
+                        userInfo.addUser(new User(newConnectionPanel));
 
-                    // PersistentStateComponent 저장
-                    userInfo.addUser(new User(newConnectionPanel));
-
-                    // 입력 정보를 받은 New 탭은 삭제
-                    tabbedPane.remove(tabbedPane.indexOfTab("New"));
+                        // 입력 정보를 받은 New 탭은 삭제
+                        tabbedPane.remove(tabbedPane.indexOfTab("New"));
+                    }
                 });
 
                 // 새롭게 생성한 팀 정보 입력 탭에 취소 버튼 리스너 등록
@@ -693,13 +762,13 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
                         ConnectionPanel initConnectionPanel = new ConnectionPanel();
                         initConnectionPanel.getConnectButton().addActionListener(ie -> {
                             PanelInfo initPanelInfo = new PanelInfo(initConnectionPanel);
-                            onShowing(project, toolWindow, initPanelInfo);
+                            if(onShowing(project, toolWindow, initPanelInfo)) {
+                                // PersistentStateComponent 저장
+                                userInfo.addUser(new User(initConnectionPanel));
 
-                            // PersistentStateComponent 저장
-                            userInfo.addUser(new User(initConnectionPanel));
-                            System.out.println(userInfo.getUsers().size());
-
-                            tabbedPane.remove(tabbedPane.indexOfTab("New"));
+                                // 입력 정보를 받은 New 탭은 삭제
+                                tabbedPane.remove(tabbedPane.indexOfTab("New"));
+                            }
                         });
                         tabPanel = initConnectionPanel;
 
@@ -753,5 +822,122 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
             }
         }
         return null;
+    }
+
+    // ** plugin 설치 시
+    public void initializePluginResources() {
+        System.out.println("node modules 확인 중...");
+
+        // 리소스 검색
+
+        String path = PathManager.getPluginsPath();
+        System.out.println("path : "+path);
+
+        String jarPath = Paths.get(path, "CodeSync/lib/instrumented-CodeSync-1.8.jar").toString();
+
+        // JAR 파일에서 리소스 복사
+        String tmpDir = System.getProperty("java.io.tmpdir") + "CodeSync";
+        File pluginDir = new File(tmpDir);
+        if (!pluginDir.exists()) {
+            pluginDir.mkdir();
+
+            copyResourceFromJar(jarPath, "y-websocket/y_websocket.js", new File(pluginDir, "y_websocket.js"));
+            copyResourceFromJar(jarPath, "y-websocket/package.json", new File(pluginDir, "package.json"));
+            copyResourceFromJar(jarPath, "y-websocket/package-lock.json", new File(pluginDir, "package-lock.json"));
+        } else {
+            System.out.println("폴더가 이미 존재");
+        }
+
+
+        // node_modules가 없다면 npm install을 실행
+        File nodeModulesDir = new File(pluginDir, "node_modules");
+        if (!nodeModulesDir.exists()) {
+            try {
+                Process npmProcess = new ProcessBuilder("cmd.exe", "/c", "npm install")
+                    .directory(pluginDir)
+                    .start();
+
+                int exitCode = npmProcess.waitFor();
+                if (exitCode != 0) {
+                    System.out.println("npm install 실패, 종료 코드: " + exitCode);
+                } else {
+                    System.out.println("npm install 성공.");
+                }
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+            }
+
+        } else {
+            System.out.println("node modules 존재");
+        }
+    }
+
+
+    // JAR 파일 내 리소스를 외부 파일로 복사하는 메소드
+    private void copyResourceFromJar(String jarFilePath, String resourcePath, File targetFile) {
+        try (ZipFile zipFile = new ZipFile(jarFilePath)) {
+
+            ZipEntry entry = zipFile.getEntry(resourcePath);
+            if (entry != null) {
+                // ZipEntry에서 InputStream을 얻어와서 targetFile로 복사
+                try (InputStream inputStream = zipFile.getInputStream(entry);
+                     OutputStream outputStream = new FileOutputStream(targetFile)) {
+
+                    byte[] buffer = new byte[1024];
+                    int length;
+                    while ((length = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, length);
+                    }
+                    System.out.println("복사 완료: " + targetFile.getPath());
+                }
+            } else {
+                System.out.println("리소스를 찾을 수 없습니다: " + resourcePath);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public boolean checkRootDirectory(Session session) {
+        try {
+            // 명령어를 실행하여 결과를 확인
+            String command = "test -d " + rootDirectory + " && echo \"Y\" || echo \"N\"";
+            String result = executeCommand(session, command);
+
+            // 결과가 "N"인 경우 CodeSync 폴더 생성
+            if ("N".equals(result.trim())) {
+                System.out.println(rootDirectory + " 루트 디렉토리 생성");
+                String createDirCommand = "mkdir " + rootDirectory;
+                executeCommand(session, createDirCommand);
+            }
+            return true; // 폴더 생성 또는 폴더 존재 확인 완료
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private String executeCommand(Session session, String command) throws IOException {
+        StringBuilder output = new StringBuilder();
+        try {
+            // 명령어 실행
+            var channel = session.openChannel("exec");
+            ((ChannelExec) channel).setCommand(command);
+            channel.setInputStream(null);
+
+            // 명령어 실행 결과를 읽기 위한 스트림
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(channel.getInputStream()))) {
+                channel.connect();
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+                channel.disconnect();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return output.toString().trim();
     }
 }

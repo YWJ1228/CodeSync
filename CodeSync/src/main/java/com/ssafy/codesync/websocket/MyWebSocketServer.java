@@ -26,6 +26,8 @@ public class MyWebSocketServer extends WebSocketServer {
 	private FileEditorManager fileEditorManager;
 	private File tempFile;
 
+	public boolean socketFlag = false;
+
 	// 생성자, 포트 설정
 	public MyWebSocketServer(int port, Project project) {
 		super(new InetSocketAddress(port));  // WebSocket 서버를 특정 포트에서 리스닝
@@ -50,25 +52,46 @@ public class MyWebSocketServer extends WebSocketServer {
 	// 클라이언트로부터 메시지를 받았을 때 호출되는 메서드
 	@Override
 	public void onMessage(WebSocket conn, String message) {
-		System.out.println("받은 메시지: " + message);
+		System.out.println("[ intellij ] 받은 메시지: " + message);
 		// 서버로부터 메시지를 받았을 때 처리
 		String newMessage = message.replace("\r\n", "\n");
 		WriteCommandAction.runWriteCommandAction(project, () -> {
+			socketFlag = true;
 			document.setText(newMessage);
-
-			try (FileWriter writer = new FileWriter(tempFile)) {
-				writer.write(newMessage);  // 내용을 덮어씌움
-				System.out.println("[ intellij ] new Message: " + newMessage);
-				System.out.println("[ intellij ] 덮어씌우기 완료");
-			} catch (IOException e) {
-				System.out.println("[ intellij ] "+e.getMessage());
-			}
-
-			// VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByIoFile(tempFile);
-			// virtualFile.refresh(false, false);
-			//			fileEditorManager.openFile(virtualFile, true);
-			// 			openEditorForFileType(virtualFile);
+			socketFlag = false;
+			System.out.println("[ intellij(onMessage)] 변경된 내용 수신 : " + newMessage);
+//
+//			try (FileWriter writer = new FileWriter(tempFile)) {
+//				writer.write(newMessage);  // 내용을 덮어씌움
+//				System.out.println("[ intellij ] new Message: " + newMessage);
+//				System.out.println("[ intellij ] 덮어씌우기 완료");
+//			} catch (IOException e) {
+//				System.out.println("[ intellij ] "+e.getMessage());
+//			}
+//
+//			 VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByIoFile(tempFile);
+//			 virtualFile.refresh(false, false);
+//						fileEditorManager.openFile(virtualFile, true);
+//			 			openEditorForFileType(virtualFile);
 		});
+//		try {
+//			JsonObject jsonMessage = JsonParser.parseString(message).getAsJsonObject();
+//			int startOffset = jsonMessage.get("startOffset").getAsInt();
+//			int endOffset = jsonMessage.get("endOffset").getAsInt();
+//			String newText = jsonMessage.get("newText").getAsString();
+//
+//			// Document에 변경 사항 적용
+//			WriteCommandAction.runWriteCommandAction(project, () -> {
+//				if (document != null) {
+//					document.replaceString(startOffset, endOffset, newText);
+//					System.out.println("[ intellij (onMessage) ] Document updated with new text: " + newText);
+//				} else {
+//					System.err.println("[ intellij (onMessage) ] Document is not initialized.");
+//				}
+//			});
+//		} catch (Exception e) {
+//			System.err.println("[ intellij (onMessage) ] Error processing message: " + e.getMessage());
+//		}
 	}
 
 	// 클라이언트 연결이 종료되었을 때 호출되는 메서드
