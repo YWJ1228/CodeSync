@@ -47,7 +47,7 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
     private JBTabbedPane tabbedPane;
     private JPanel tabPanel;
     private UserInfo userInfo = ServiceManager.getService(UserInfo.class);
-    private final String rootDirectory = "vscode-test";
+    private final String rootDirectory = "CodeSync";
 
     // regist-server: JPanel로 입력 받은 서버 등록 정보를 저장하는 클래스
     public class PanelInfo {
@@ -666,7 +666,7 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
 
     // 리스너 추가 메서드 - 서버 탭 추가 버튼
     public JButton addServerTabListener(Project project, ToolWindow toolWindow) {
-        JButton addButton = new JButton("Add Connection");
+        JButton addButton = new JButton("+ New Server");
 
         addButton.addActionListener(e -> {
             if (tabbedPane.getTabCount() == 4) {
@@ -833,7 +833,7 @@ public class DirectoryStructureToolWindowFactory implements ToolWindowFactory {
         String path = PathManager.getPluginsPath();
         System.out.println("path : "+path);
 
-        String jarPath = Paths.get(path, "CodeSync/lib/instrumented-CodeSync-1.8.jar").toString();
+        String jarPath = Paths.get(path, "CodeSync/lib/instrumented-CodeSync-2.0.jar").toString();
 
         // JAR 파일에서 리소스 복사
         String tmpDir = System.getProperty("java.io.tmpdir") + "CodeSync";

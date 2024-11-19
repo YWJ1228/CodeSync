@@ -30,7 +30,7 @@ public class ConnectionPanel extends JPanel {
         gbc.insets = JBUI.insets(10, 5); // 컴포넌트 간의 여백 설정
 
         // 팀 이름
-        teamNameLabel = new JLabel("Name:");
+        teamNameLabel = new JLabel("Server Name:");
         gbc.gridx = 0;
         gbc.gridy = 0;
         this.add(teamNameLabel, gbc);
@@ -40,7 +40,7 @@ public class ConnectionPanel extends JPanel {
         this.add(teamName, gbc);
 
         // 서버 IP
-        serverIpLabel = new JLabel("Server IP:");
+        serverIpLabel = new JLabel("IP Address:");
         gbc.gridx = 0;
         gbc.gridy = 1;
         this.add(serverIpLabel, gbc);
@@ -50,7 +50,7 @@ public class ConnectionPanel extends JPanel {
         this.add(serverIP, gbc);
 
         // PEM 키 경로
-        pemKeyPathLabel = new JLabel("PEM Key Path:");
+        pemKeyPathLabel = new JLabel("PEM Key:");
         gbc.gridx = 0;
         gbc.gridy = 2;
         this.add(pemKeyPathLabel, gbc);
@@ -84,7 +84,7 @@ public class ConnectionPanel extends JPanel {
         });
 
         // 서버 타입
-        serverLabel = new JLabel("Server:");
+        serverLabel = new JLabel("Server Type:");
         gbc.gridx = 0;
         gbc.gridy = 3;
         this.add(serverLabel, gbc);
@@ -95,7 +95,7 @@ public class ConnectionPanel extends JPanel {
         this.add(serverTypeComboBox, gbc);
 
         // Connect 버튼
-        connectButton = new JButton("Connect");
+        connectButton = new JButton("Register");
         gbc.gridx = 0;
         gbc.gridy = 4;
         gbc.weightx = 1.0; // 가용 공간을 균등하게 분배

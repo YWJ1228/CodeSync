@@ -28,7 +28,7 @@ import java.util.Objects;
 
 public class UploadEditorToRemoteRepository extends AnAction {
     private UserInfo userInfo = ServiceManager.getService(UserInfo.class);
-    private final String rootDirectory = "vscode-test";
+    private final String rootDirectory = "CodeSync";
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {

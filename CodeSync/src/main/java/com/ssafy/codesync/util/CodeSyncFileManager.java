@@ -47,7 +47,7 @@ import org.jetbrains.annotations.NotNull;
 // 로컬로 옮긴 파일을 VirtualFile을 통해 에디터로 여는 기능을 구현
 public class CodeSyncFileManager {
 
-    private final String rootDirectory = "vscode-test";
+    private final String rootDirectory = "CodeSync";
     private final Project project;
     private final MyWebSocketServer server;
     private final FileEditorManager fileEditorManager;
@@ -57,6 +57,7 @@ public class CodeSyncFileManager {
     private final Map<VirtualFile, DocumentListener> documentListeners = new HashMap<>();
     private final Map<VirtualFile, Boolean> userInputFlags = new HashMap<>();
 //    private DocumentListener documentListener;
+    private final Map<VirtualFile, Process> processes = new HashMap<>();
 
     // ** plugin 설치 시
     private String pluginPath;
@@ -111,7 +112,7 @@ public class CodeSyncFileManager {
                 });
                 System.out.println("5 - 에디터 열기 End");
 
-                startProcessWithJson(localFile, serverIp, fileName); // Process 실행
+                startProcessWithJson(localFile, serverIp, fileName, virtualFile); // Process 실행
             } else  {
                 System.out.println("4 - 버츄얼 파일 가져오기 실패");
                 throw new RuntimeException("Failed to create VirtualFile for: " + localFile.getPath());
@@ -245,9 +246,15 @@ public class CodeSyncFileManager {
             }
         }
 
+        Process finishProcess = processes.get(file);
+        finishProcess.destroy();
+        processes.remove(file);
+
         // 로컬 파일 업로드 및 삭제
         File localFile = new File(file.getPath());
-        String remoteFilePath = "/home/" + file.getParent().getName() + "/" + file.getName();
+        String[] dirs = localFile.getParent().split("\\\\");
+        User user = userInfo.getUserByServerIP(dirs[dirs.length-1]);
+        String remoteFilePath = "/home/" + user.getServerOption() + "/" + rootDirectory + "/" + file.getName();
         try {
             boolean uploadSuccess = uploadFile(remoteFilePath, file.getParent().getName(), localFile);
             if (uploadSuccess && localFile.exists() && localFile.delete()) { // && localFile.delete()
@@ -323,7 +330,7 @@ public class CodeSyncFileManager {
 //        });
 //    }
 
-    private void startProcessWithJson(File localFile, String serverIp, String fileName) {
+    private void startProcessWithJson(File localFile, String serverIp, String fileName, VirtualFile virtualFile) {
         try {
             // 파일 내용 읽기
             String fileContent = new String(Files.readAllBytes(localFile.toPath())).trim();
@@ -337,8 +344,8 @@ public class CodeSyncFileManager {
             // JSON 파일 생성
             String jsonArgs = new Gson().toJson(jsonMap);
             Path jsonTempFile = Files.createTempFile("zargs", ".json");
-            Files.write(jsonTempFile, jsonArgs.getBytes(StandardCharsets.UTF_8));
             jsonTempFile.toFile().deleteOnExit(); // JVM 종료 시 임시 파일 삭제 예약
+            Files.write(jsonTempFile, jsonArgs.getBytes(StandardCharsets.UTF_8));
 
             // ProcessBuilder 준비
             ProcessBuilder processBuilder = new ProcessBuilder(
@@ -352,6 +359,7 @@ public class CodeSyncFileManager {
 
             // 프로세스 실행
             Process process = processBuilder.start();
+            processes.put(virtualFile, process);
             System.out.println("[ intellij ] Process 실행");
 
             // 프로세스 출력 읽기

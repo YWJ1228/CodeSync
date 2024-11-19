@@ -69,7 +69,7 @@ async function initializeConnection(fileContent, host, fileName) {
   }
 
   // yText에 Java에서 전달받은 내용을 삽입
-  const yText = ydoc.getText(fileName);
+  const yText = ydoc.getText(host + "-" + fileName);
   // yText.insert(0, fileContent);
 
   const wsClient = new WebSocket("ws://localhost:1234");
